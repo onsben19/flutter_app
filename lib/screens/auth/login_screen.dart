@@ -3,7 +3,7 @@ import '../../theme/app_theme.dart';
 import '../main_navigation_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key}); 
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
