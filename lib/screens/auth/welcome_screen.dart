@@ -139,15 +139,7 @@ class WelcomeScreen extends StatelessWidget {
                     color: Colors.white.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildFeature(Icons.group, 'Groupes'),
-                      _buildFeature(Icons.map, 'Itinéraires'),
-                      _buildFeature(Icons.attach_money, 'Dépenses'),
-                      _buildFeature(Icons.photo_camera, 'Souvenirs'),
-                    ],
-                  ),
+              
                 ),
                 
                 const Spacer(),
