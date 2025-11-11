@@ -1,10 +1,15 @@
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io';
 import 'package:path/path.dart';
 import '../models/journal_entry.dart';
+import '../models/planification.dart';
 
 class DatabaseService {
   static Database? _database;
   static const String _tableName = 'journal_entries';
+  static const String _planningTable = 'planning_suggestions';
 
   // Singleton pattern
   static final DatabaseService _instance = DatabaseService._internal();
@@ -20,13 +25,24 @@ class DatabaseService {
 
   // Initialiser la base de données
   Future<Database> _initDatabase() async {
+    if (kIsWeb) {
+      throw UnsupportedError('Local SQLite (sqflite) is not supported on Web.');
+    }
+    if (Platform.isWindows || Platform.isLinux) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    }
     final databasesPath = await getDatabasesPath();
     final path = join(databasesPath, 'travel_journal.db');
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 3,
       onCreate: _createDatabase,
+      onUpgrade: _onUpgrade,
+      onOpen: (db) async {
+        await _ensurePlanningTable(db);
+      },
     );
   }
 
@@ -96,6 +112,181 @@ class DatabaseService {
     for (final entry in sampleEntries) {
       await db.insert(_tableName, entry);
     }
+  }
+
+  // Ensure planning table exists (idempotent)
+  Future<void> _ensurePlanningTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_planningTable (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        category TEXT NOT NULL,
+        duration TEXT,
+        cost REAL DEFAULT 0,
+        votes INTEGER DEFAULT 0,
+        totalMembers INTEGER DEFAULT 0,
+        suggestedBy TEXT NOT NULL,
+        imageUrls TEXT,
+        isVoted INTEGER DEFAULT 0,
+        tripDay INTEGER DEFAULT 0,
+        tripTime TEXT,
+        createdAt INTEGER NOT NULL
+      )
+    ''');
+    final countRes = await db.rawQuery('SELECT COUNT(*) as c FROM $_planningTable');
+    final c = countRes.first['c'] as int? ?? 0;
+    if (c == 0) {
+      await _insertPlanningSampleData(db);
+    }
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await _ensurePlanningTable(db);
+      await _insertPlanningSampleData(db);
+    }
+    if (oldVersion < 3) {
+      await _addColumnIfMissing(db, _planningTable, 'tripDay', 'INTEGER', defaultValue: '0');
+      await _addColumnIfMissing(db, _planningTable, 'tripTime', 'TEXT', defaultValue: "''");
+    }
+  }
+
+  Future<void> _addColumnIfMissing(Database db, String table, String column, String type, {String? defaultValue}) async {
+    final info = await db.rawQuery('PRAGMA table_info($table)');
+    final exists = info.any((row) => (row['name'] as String).toLowerCase() == column.toLowerCase());
+    if (!exists) {
+      final def = defaultValue != null ? ' DEFAULT $defaultValue' : '';
+      await db.execute('ALTER TABLE $table ADD COLUMN $column $type$def');
+    }
+  }
+
+  // Insert sample planning suggestions
+  Future<void> _insertPlanningSampleData(Database db) async {
+    final suggestions = [
+      {
+        'title': 'Tour Eiffel',
+        'description': 'Visite de la célèbre tour de Paris',
+        'category': 'Monument',
+        'duration': '2h',
+        'cost': 25.0,
+        'votes': 8,
+        'totalMembers': 10,
+        'suggestedBy': 'Marie',
+        'imageUrls': '',
+        'isVoted': 1,
+        'tripDay': 1,
+        'tripTime': '09:00',
+        'createdAt': DateTime(2024, 6, 15).millisecondsSinceEpoch,
+      },
+      {
+        'title': 'Louvre',
+        'description': 'Musée d\'art et d\'histoire',
+        'category': 'Musée',
+        'duration': '4h',
+        'cost': 17.0,
+        'votes': 6,
+        'totalMembers': 10,
+        'suggestedBy': 'Pierre',
+        'imageUrls': '',
+        'isVoted': 0,
+        'tripDay': 1,
+        'tripTime': '14:00',
+        'createdAt': DateTime(2024, 6, 16).millisecondsSinceEpoch,
+      },
+    ];
+
+    for (final s in suggestions) {
+      await db.insert(_planningTable, s);
+    }
+  }
+
+  // ----------------- Planification CRUD -----------------
+
+  Future<int> insertPlanification(Planification p) async {
+    final db = await database;
+    return await db.insert(_planningTable, p.toMap());
+  }
+
+  Future<List<Planification>> getAllPlanifications() async {
+    final db = await database;
+    final maps = await db.query(
+      _planningTable,
+      orderBy: 'createdAt DESC',
+    );
+    return List.generate(maps.length, (i) => Planification.fromMap(maps[i]));
+  }
+
+  Future<Planification?> getPlanificationById(int id) async {
+    final db = await database;
+    final maps = await db.query(
+      _planningTable,
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (maps.isNotEmpty) return Planification.fromMap(maps.first);
+    return null;
+  }
+
+  Future<int> updatePlanification(Planification p) async {
+    final db = await database;
+    return await db.update(
+      _planningTable,
+      p.toMap(),
+      where: 'id = ?',
+      whereArgs: [p.id],
+    );
+  }
+
+  Future<int> deletePlanification(int id) async {
+    final db = await database;
+    return await db.delete(
+      _planningTable,
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<List<Planification>> searchPlanifications(String query) async {
+    final db = await database;
+    final maps = await db.query(
+      _planningTable,
+      where: 'title LIKE ? OR description LIKE ? OR category LIKE ?',
+      whereArgs: ['%$query%', '%$query%', '%$query%'],
+      orderBy: 'createdAt DESC',
+    );
+    return List.generate(maps.length, (i) => Planification.fromMap(maps[i]));
+  }
+
+  Future<List<Planification>> getPlanificationsByCategory(String category) async {
+    final db = await database;
+    final maps = await db.query(
+      _planningTable,
+      where: 'category = ?',
+      whereArgs: [category],
+      orderBy: 'createdAt DESC',
+    );
+    return List.generate(maps.length, (i) => Planification.fromMap(maps[i]));
+  }
+
+  Future<void> toggleVote(int id) async {
+    final db = await database;
+    final row = await db.query(_planningTable, where: 'id = ?', whereArgs: [id], limit: 1);
+    if (row.isEmpty) return;
+    final current = row.first;
+    final isVoted = (current['isVoted'] as int? ?? 0) == 1;
+    final currentVotes = (current['votes'] as int? ?? 0);
+    final newVotes = isVoted ? (currentVotes - 1) : (currentVotes + 1);
+    await db.update(
+      _planningTable,
+      {
+        'isVoted': isVoted ? 0 : 1,
+        'votes': newVotes < 0 ? 0 : newVotes,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   // CRUD Operations

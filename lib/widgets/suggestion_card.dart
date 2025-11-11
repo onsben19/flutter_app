@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import '../theme/app_theme.dart';
 
 class SuggestionCard extends StatelessWidget {
@@ -17,11 +18,31 @@ class SuggestionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final votes = suggestion['votes'] as int;
-    final totalMembers = suggestion['totalMembers'] as int;
-    final isVoted = suggestion['isVoted'] as bool;
-    final votePercentage = (votes / totalMembers * 100).round();
-    final isApproved = votes >= (totalMembers * 0.6).ceil(); // 60% d'approbation
+    final int votes = (suggestion['votes'] as int?) ?? 0;
+    final int totalMembers = (suggestion['totalMembers'] as int?) ?? 0;
+    final bool isVoted = (suggestion['isVoted'] as bool?) ?? false;
+    final int votePercentage = totalMembers > 0
+        ? ((votes / totalMembers) * 100).round()
+        : 0;
+    final bool isApproved = totalMembers > 0
+        ? votes >= (totalMembers * 0.6).ceil()
+        : false; // avoid division by zero
+
+    final String imageUrl = (suggestion['imageUrl'] as String?)?.trim() ?? '';
+    ImageProvider? bgImage;
+    if (imageUrl.isNotEmpty) {
+      if (imageUrl.startsWith('http') || imageUrl.startsWith('data:')) {
+        bgImage = NetworkImage(imageUrl);
+      } else {
+        try {
+          if (File(imageUrl).existsSync()) {
+            bgImage = FileImage(File(imageUrl));
+          }
+        } catch (_) {
+          // ignore invalid file path
+        }
+      }
+    }
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -33,30 +54,48 @@ class SuggestionCard extends StatelessWidget {
             height: 120,
             width: double.infinity,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppTheme.primaryColor.withOpacity(0.8),
-                  AppTheme.secondaryColor.withOpacity(0.8),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              gradient: bgImage == null
+                  ? LinearGradient(
+                      colors: [
+                        AppTheme.primaryColor.withOpacity(0.8),
+                        AppTheme.secondaryColor.withOpacity(0.8),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    )
+                  : null,
+              image: bgImage != null
+                  ? DecorationImage(
+                      image: bgImage,
+                      fit: BoxFit.cover,
+                    )
+                  : null,
             ),
             child: Stack(
               children: [
-                // TODO: Remplacer par une vraie image
+                // Overlay to improve readability
                 Container(
                   width: double.infinity,
                   height: double.infinity,
-                  color: Colors.black.withOpacity(0.2),
-                ),
-                const Center(
-                  child: Icon(
-                    Icons.place,
-                    size: 48,
-                    color: Colors.white,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.15),
+                        Colors.black.withOpacity(0.25),
+                      ],
+                    ),
                   ),
                 ),
+                if (bgImage == null)
+                  const Center(
+                    child: Icon(
+                      Icons.place,
+                      size: 48,
+                      color: Colors.white,
+                    ),
+                  ),
                 
                 // Badge de catégorie
                 Positioned(
@@ -155,6 +194,38 @@ class SuggestionCard extends StatelessWidget {
                 // Informations
                 Row(
                   children: [
+                    if ((suggestion['tripDay'] ?? 0) is int && (suggestion['tripDay'] ?? 0) > 0) ...[
+                      Icon(
+                        Icons.calendar_today,
+                        size: 16,
+                        color: Colors.grey.shade600,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Jour ${suggestion['tripDay']}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                    ],
+                    if ((suggestion['tripTime'] as String?)?.isNotEmpty == true) ...[
+                      Icon(
+                        Icons.schedule,
+                        size: 16,
+                        color: Colors.grey.shade600,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        suggestion['tripTime'],
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                    ],
                     Icon(
                       Icons.access_time,
                       size: 16,
@@ -213,7 +284,9 @@ class SuggestionCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     LinearProgressIndicator(
-                      value: votes / totalMembers,
+                      value: totalMembers > 0
+                          ? (votes / totalMembers).clamp(0.0, 1.0).toDouble()
+                          : 0.0,
                       backgroundColor: Colors.grey.shade300,
                       valueColor: AlwaysStoppedAnimation<Color>(
                         isApproved ? Colors.green : AppTheme.primaryColor,

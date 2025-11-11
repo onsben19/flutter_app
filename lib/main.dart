@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:travelapp/screens/auth/login_screen.dart';
 import 'package:travelapp/screens/auth/welcome_screen.dart';
 import 'theme/app_theme.dart';
@@ -6,6 +9,12 @@ import 'screens/main_navigation_screen.dart';
 // import 'screens/auth/welcome_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Initialize SQLite for desktop (Windows/Linux) using FFI
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
   runApp(const TravelApp());
 }
 
