@@ -42,7 +42,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 4, // v1: journal, v2: users, v3: groups+members(+dates), v4: groups.image_path
+      version: 5, // v1: journal, v2: users, v3: groups+members(+dates), v4: groups.image_path, v5: ensure planning + backfill
       onConfigure: (db) async {
         // Enforce foreign keys
         await db.execute('PRAGMA foreign_keys = ON');
@@ -51,24 +51,6 @@ class DatabaseService {
       onUpgrade: _onUpgrade,
       onOpen: (db) async {
         await _ensurePlanningTable(db);
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        // v2: add users (if upgrading from v1)
-        if (oldVersion < 2) {
-          await _createUsersTable(db);
-        }
-        // v3: add groups + group_members (+ start/end dates)
-        if (oldVersion < 3) {
-          await _createGroupsTables(db);
-        }
-        // v4: add image_path to groups
-        if (oldVersion < 4) {
-          try {
-            await db.execute('ALTER TABLE $_groupsTable ADD COLUMN image_path TEXT');
-          } catch (_) {
-            // Column may already exist if table was recreated; ignore
-          }
-        }
       },
     );
   }
@@ -187,7 +169,7 @@ class DatabaseService {
     ];
 
     for (final entry in sampleEntries) {
-      await db.insert(_tableName, entry);
+      await db.insert(_journalTable, entry);
     }
   }
 
@@ -219,13 +201,33 @@ class DatabaseService {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    // v2: add users (if upgrading from v1)
     if (oldVersion < 2) {
-      await _ensurePlanningTable(db);
-      await _insertPlanningSampleData(db);
+      await _createUsersTable(db);
     }
+    // v3: add groups + group_members (+ start/end dates)
     if (oldVersion < 3) {
+      await _createGroupsTables(db);
+    }
+    // v4: add image_path to groups
+    if (oldVersion < 4) {
+      try {
+        await db.execute('ALTER TABLE $_groupsTable ADD COLUMN image_path TEXT');
+      } catch (_) {
+        // ignore if already exists
+      }
+    }
+    // v5: ensure planning table and new columns
+    if (oldVersion < 5) {
+      await _ensurePlanningTable(db);
       await _addColumnIfMissing(db, _planningTable, 'tripDay', 'INTEGER', defaultValue: '0');
       await _addColumnIfMissing(db, _planningTable, 'tripTime', 'TEXT', defaultValue: "''");
+      // seed planning suggestions only if table was empty
+      final countRes = await db.rawQuery('SELECT COUNT(*) as c FROM $_planningTable');
+      final c = (countRes.first['c'] as int?) ?? 0;
+      if (c == 0) {
+        await _insertPlanningSampleData(db);
+      }
     }
   }
 
