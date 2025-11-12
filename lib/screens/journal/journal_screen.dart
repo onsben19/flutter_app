@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:social_share/social_share.dart';  // ← Ajouter
 import '../../theme/app_theme.dart';
 import '../../models/journal_entry.dart';
 import '../../services/database_service.dart';
+import '../../widgets/comments_widget.dart';
 
 class JournalScreen extends StatefulWidget {
   const JournalScreen({super.key});
@@ -18,6 +23,8 @@ class _JournalScreenState extends State<JournalScreen> {
   List<JournalEntry> _journalEntries = [];
   final DatabaseService _databaseService = DatabaseService();
   bool _isLoading = true;
+  List<JournalEntry> _filteredEntries = [];
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -35,19 +42,213 @@ class _JournalScreenState extends State<JournalScreen> {
       final entries = await _databaseService.getAllEntries();
       setState(() {
         _journalEntries = entries;
+        _filteredEntries = entries; // Initialiser la liste filtrée
         _isLoading = false;
       });
     } catch (e) {
       setState(() {
         _isLoading = false;
       });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur lors du chargement: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Fonction de recherche
+  void _searchEntries() {
+    showSearch(
+      context: context,
+      delegate: JournalSearchDelegate(_journalEntries, _onSearchResults),
+    );
+  }
+
+  void _onSearchResults(List<JournalEntry> results) {
+    setState(() {
+      _filteredEntries = results;
+    });
+  }
+
+  // Fonction d'export du journal
+  void _exportJournal() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                Icon(Icons.download, color: AppTheme.primaryColor, size: 24),
+                const SizedBox(width: 12),
+                const Text(
+                  'Exporter mon carnet',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Options d'export
+            ListTile(
+              leading: Icon(Icons.text_snippet, color: AppTheme.primaryColor),
+              title: const Text('Export texte complet'),
+              subtitle: const Text('Toutes les entrées en format texte'),
+              onTap: () => _exportAsText(),
+            ),
+            
+            ListTile(
+              leading: Icon(Icons.picture_as_pdf, color: AppTheme.primaryColor),
+              title: const Text('Export PDF'),
+              subtitle: const Text('Génération d\'un PDF du carnet'),
+              onTap: () => _exportAsPDF(),
+            ),
+            
+            ListTile(
+              leading: Icon(Icons.backup, color: AppTheme.primaryColor),
+              title: const Text('Sauvegarde complète'),
+              subtitle: const Text('Données + photos en archive'),
+              onTap: () => _exportComplete(),
+            ),
+            
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportAsText() async {
+    Navigator.pop(context);
+    
+    try {
+      final Directory tempDir = await getTemporaryDirectory();
+      final String fileName = 'mon_carnet_voyage_${DateTime.now().millisecondsSinceEpoch}.txt';
+      final String filePath = path.join(tempDir.path, fileName);
+      
+      String exportContent = '''
+🌍 MON CARNET DE VOYAGE 🌍
+========================================
+
+Exporté le: ${DateTime.now().toString()}
+Nombre d'entrées: ${_journalEntries.length}
+Total photos: ${_getTotalPhotos()}
+Total likes: ${_getTotalLikes()}
+
+========================================
+
+''';
+
+      for (int i = 0; i < _journalEntries.length; i++) {
+        final entry = _journalEntries[i];
+        exportContent += '''
+ENTRÉE ${i + 1}
+----------------------------------------
+Titre: ${entry.title}
+Date: ${_formatDateTime(entry.date)}
+Lieu: ${entry.location}
+Humeur: ${_getMoodText(entry.mood)}
+Type: ${_getTypeText(entry.type)}
+
+Contenu:
+${entry.content}
+
+Photos: ${entry.photos.length}
+Likes: ${entry.likes}
+Commentaires: ${entry.comments}
+
+----------------------------------------
+
+''';
+      }
+
+      exportContent += '''
+========================================
+Fin du carnet - ${_journalEntries.length} entrées exportées
+''';
+
+      final File file = File(filePath);
+      await file.writeAsString(exportContent);
+
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        subject: 'Mon Carnet de Voyage',
+        text: 'Voici l\'export complet de mon carnet de voyage !',
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('📤 Carnet exporté avec succès !'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erreur lors du chargement: $e'),
+          content: Text('Erreur lors de l\'export: $e'),
           backgroundColor: Colors.red,
         ),
       );
     }
+  }
+
+  Future<void> _exportAsPDF() async {
+    Navigator.pop(context);
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+            const SizedBox(width: 12),
+            const Text('Génération du PDF en cours...'),
+          ],
+        ),
+        backgroundColor: AppTheme.primaryColor,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+
+    // Simuler la génération PDF
+    await Future.delayed(const Duration(seconds: 2));
+    
+    // Pour l'instant, on fait un export texte formaté
+    await _exportAsText();
+  }
+
+  Future<void> _exportComplete() async {
+    Navigator.pop(context);
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🚧 Fonctionnalité en développement'),
+        backgroundColor: Colors.orange,
+      ),
+    );
   }
 
   @override
@@ -55,6 +256,8 @@ class _JournalScreenState extends State<JournalScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Carnet de Voyage'),
+        backgroundColor: AppTheme.primaryColor,
+        foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.search),
@@ -98,7 +301,7 @@ class _JournalScreenState extends State<JournalScreen> {
                         child: _buildStatItem(
                           icon: Icons.book,
                           label: 'Entrées',
-                          value: '${_journalEntries.length}',
+                          value: '${_filteredEntries.length}', // Utiliser _filteredEntries
                         ),
                       ),
                       Container(
@@ -131,7 +334,7 @@ class _JournalScreenState extends State<JournalScreen> {
 
                 // Timeline
                 Expanded(
-                  child: _journalEntries.isEmpty
+                  child: _filteredEntries.isEmpty // Utiliser _filteredEntries
                       ? const Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -152,9 +355,9 @@ class _JournalScreenState extends State<JournalScreen> {
                         )
                       : ListView.builder(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          itemCount: _journalEntries.length,
+                          itemCount: _filteredEntries.length, // Utiliser _filteredEntries
                           itemBuilder: (context, index) {
-                            final entry = _journalEntries[index];
+                            final entry = _filteredEntries[index]; // Utiliser _filteredEntries
                             return _buildJournalEntry(entry, index);
                           },
                         ),
@@ -324,48 +527,64 @@ class _JournalScreenState extends State<JournalScreen> {
                     
                     const SizedBox(height: 12),
                     
-                    // Actions
-                    Row(
+                    // Actions avec Wrap pour éviter l'overflow
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.favorite_outline),
-                          onPressed: () => _likeEntry(entry.id!),
-                          padding: const EdgeInsets.all(8),
-                          constraints: const BoxConstraints(
-                            minWidth: 40,
-                            minHeight: 40,
-                          ),
+                        // Groupe likes/commentaires
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.favorite_outline, size: 20),
+                              onPressed: () => _likeEntry(entry.id!),
+                              padding: const EdgeInsets.all(4),
+                              constraints: const BoxConstraints(
+                                minWidth: 32,
+                                minHeight: 32,
+                              ),
+                            ),
+                            Text('${entry.likes}', style: const TextStyle(fontSize: 12)),
+                            const SizedBox(width: 12),
+                            IconButton(
+                              icon: const Icon(Icons.comment_outlined, size: 20),
+                              onPressed: () => _showComments(entry),
+                              padding: const EdgeInsets.all(4),
+                              constraints: const BoxConstraints(
+                                minWidth: 32,
+                                minHeight: 32,
+                              ),
+                            ),
+                            Text('${entry.comments}', style: const TextStyle(fontSize: 12)),
+                          ],
                         ),
-                        Text('${entry.likes}'),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.comment_outlined),
-                          onPressed: () => _showComments(entry),
-                          padding: const EdgeInsets.all(8),
-                          constraints: const BoxConstraints(
-                            minWidth: 40,
-                            minHeight: 40,
-                          ),
-                        ),
-                        Text('${entry.comments}'),
-                        const Spacer(),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () => _deleteEntry(entry.id!),
-                          padding: const EdgeInsets.all(8),
-                          constraints: const BoxConstraints(
-                            minWidth: 40,
-                            minHeight: 40,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.share),
-                          onPressed: () => _shareEntry(entry),
-                          padding: const EdgeInsets.all(8),
-                          constraints: const BoxConstraints(
-                            minWidth: 40,
-                            minHeight: 40,
-                          ),
+                        
+                        // Groupe actions
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.share, size: 18),
+                              onPressed: () => _shareEntry(entry),
+                              padding: const EdgeInsets.all(4),
+                              constraints: const BoxConstraints(
+                                minWidth: 32,
+                                minHeight: 32,
+                              ),
+                              tooltip: 'Partager',
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 18),
+                              onPressed: () => _deleteEntry(entry.id!),
+                              padding: const EdgeInsets.all(4),
+                              constraints: const BoxConstraints(
+                                minWidth: 32,
+                                minHeight: 32,
+                              ),
+                              tooltip: 'Supprimer',
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -770,8 +989,8 @@ class _JournalScreenState extends State<JournalScreen> {
             ),
           ),
         ),
-      ),
-    );
+        ),
+      );
   }
 
   // Fonction pour choisir une image
@@ -792,31 +1011,36 @@ class _JournalScreenState extends State<JournalScreen> {
           selectedImages.add(savedImagePath);
         });
         
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Photo ajoutée ! (${selectedImages.length} photos)'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Photo ajoutée ! (${selectedImages.length} photos)'),
-            backgroundColor: Colors.green,
+            content: Text('Erreur lors de l\'ajout de la photo: $e'),
+            backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
           ),
         );
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erreur lors de l\'ajout de la photo: $e'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
     }
   }
 
   // Fonction pour sauvegarder l'image dans le dossier media
   Future<String> _saveImageToMedia(String originalPath) async {
     try {
-      // Créer le dossier media s'il n'existe pas
-      final String mediaDir = path.join(Directory.current.path, 'lib', 'media');
+      // Utiliser le répertoire des documents de l'application
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String mediaDir = path.join(appDocDir.path, 'media');
       final Directory mediaDirectory = Directory(mediaDir);
       
       if (!await mediaDirectory.exists()) {
@@ -836,7 +1060,6 @@ class _JournalScreenState extends State<JournalScreen> {
       return newFile.path;
     } catch (e) {
       print('Erreur lors de la sauvegarde de l\'image: $e');
-      // En cas d'erreur, retourner le chemin original
       return originalPath;
     }
   }
@@ -919,9 +1142,11 @@ class _JournalScreenState extends State<JournalScreen> {
       await _databaseService.likeEntry(entryId);
       await _loadEntries();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -949,16 +1174,20 @@ class _JournalScreenState extends State<JournalScreen> {
       try {
         await _databaseService.deleteEntry(entryId);
         await _loadEntries();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Entrée supprimée'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Entrée supprimée'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+          );
+        }
       }
     }
   }
@@ -970,41 +1199,181 @@ class _JournalScreenState extends State<JournalScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => CommentsWidget(entry: entry),
+      ),
+    );
+  }
+
+  void _shareEntry(JournalEntry entry) {
+    _showShareOptions(entry);
+  }
+
+  void _showShareOptions(JournalEntry entry) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        height: MediaQuery.of(context).size.height * 0.6,
+        margin: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
+            // Handle bar
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(top: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Header
             Text(
-              'Commentaires - ${entry.title}',
-              style: const TextStyle(
+              'Partager votre voyage',
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
+                color: AppTheme.primaryColor,
               ),
             ),
-            const SizedBox(height: 20),
-            const Expanded(
-              child: Center(
-                child: Text(
-                  'Aucun commentaire pour le moment',
-                  style: TextStyle(color: AppTheme.textSecondaryColor),
-                ),
+            
+            const SizedBox(height: 8),
+            
+            Text(
+              entry.title,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            const Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    decoration: InputDecoration(
-                      hintText: 'Ajouter un commentaire...',
-                      border: OutlineInputBorder(),
-                    ),
+            
+            const SizedBox(height: 24),
+            
+            // Options de partage
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                children: [
+                  // Première ligne - Réseaux sociaux
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildShareOption(
+                          icon: Icons.camera_alt,
+                          label: 'Instagram',
+                          color: Colors.purple,
+                          onTap: () => _shareToInstagram(entry),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildShareOption(
+                          icon: Icons.facebook,
+                          label: 'Facebook',
+                          color: Colors.blue,
+                          onTap: () => _shareToFacebook(entry),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildShareOption(
+                          icon: Icons.alternate_email,
+                          label: 'Twitter',
+                          color: Colors.lightBlue,
+                          onTap: () => _shareToTwitter(entry),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                SizedBox(width: 8),
-                Icon(Icons.send),
-              ],
+                  
+                  const SizedBox(height: 12),
+                  
+                  // Deuxième ligne - Apps natives
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildShareOption(
+                          icon: Icons.chat,
+                          label: 'WhatsApp',
+                          color: Colors.green,
+                          onTap: () => _shareToWhatsApp(entry),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildShareOption(
+                          icon: Icons.message,
+                          label: 'Messages',
+                          color: Colors.blue,
+                          onTap: () => _shareToMessages(entry),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildShareOption(
+                          icon: Icons.more_horiz,
+                          label: 'Plus',
+                          color: AppTheme.primaryColor,
+                          onTap: () => _shareToOthers(entry),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 30),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShareOption({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.pop(context);
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w500,
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -1012,71 +1381,209 @@ class _JournalScreenState extends State<JournalScreen> {
     );
   }
 
-  void _shareEntry(JournalEntry entry) {
+  // Fonctions de partage spécifiques
+  Future<void> _shareToInstagram(JournalEntry entry) async {
+    try {
+      if (entry.photos.isNotEmpty && File(entry.photos.first).existsSync()) {
+        await SocialShare.shareInstagramStory(
+          appId: "1341322244146516", // ✅ Ajouter l'appId pour Instagram aussi
+          imagePath: entry.photos.first,
+          backgroundTopColor: "#ffffff",
+          backgroundBottomColor: "#000000",
+          attributionURL: "https://monapp.com",
+        );
+        _showShareSuccess('Partagé sur Instagram Stories');
+      } else {
+        _showShareError('Aucune photo disponible pour Instagram');
+      }
+    } catch (e) {
+      _showShareError('Instagram non disponible');
+    }
+  }
+
+  Future<void> _shareToFacebook(JournalEntry entry) async {
+    try {
+      if (entry.photos.isNotEmpty && File(entry.photos.first).existsSync()) {
+        await SocialShare.shareFacebookStory(
+          appId: "1341322244146516", // ✅ Votre App ID Facebook
+          imagePath: entry.photos.first,
+          backgroundTopColor: "#ffffff",
+          backgroundBottomColor: "#000000",
+          attributionURL: "https://monapp.com",
+        );
+        _showShareSuccess('Partagé sur Facebook Stories');
+      } else {
+        // Si pas de photo, partage texte via lien
+        final content = _createShareContent(entry);
+        final encodedContent = Uri.encodeComponent(content);
+        await launchUrl(
+          Uri.parse("https://www.facebook.com/sharer/sharer.php?quote=$encodedContent"),
+        );
+        _showShareSuccess('Ouverture de Facebook');
+      }
+    } catch (e) {
+      _showShareError('Facebook non disponible');
+    }
+  }
+
+  Future<void> _shareToTwitter(JournalEntry entry) async {
+    try {
+      final content = _createShareContent(entry);
+      // Limiter à 280 caractères pour Twitter
+      String tweetContent = content.length > 250 
+          ? '${content.substring(0, 250)}...' 
+          : content;
+      
+      final encodedTweet = Uri.encodeComponent(tweetContent);
+      await launchUrl(Uri.parse("https://twitter.com/intent/tweet?text=$encodedTweet"));
+      _showShareSuccess('Ouverture de Twitter');
+    } catch (e) {
+      _showShareError('Twitter non disponible');
+    }
+  }
+
+  Future<void> _shareToWhatsApp(JournalEntry entry) async {
+    try {
+      final content = _createShareContent(entry);
+      final encodedContent = Uri.encodeComponent(content);
+      await launchUrl(Uri.parse("https://wa.me/?text=$encodedContent"));
+      _showShareSuccess('Ouverture de WhatsApp');
+    } catch (e) {
+      // Fallback vers partage natif
+      await _shareToOthers(entry);
+    }
+  }
+
+  Future<void> _shareToMessages(JournalEntry entry) async {
+    try {
+      final content = _createShareContent(entry);
+      final encodedContent = Uri.encodeComponent(content);
+      await launchUrl(Uri.parse("sms:?body=$encodedContent"));
+      _showShareSuccess('Ouverture de Messages');
+    } catch (e) {
+      // Fallback vers partage natif
+      await _shareToOthers(entry);
+    }
+  }
+
+  Future<void> _shareToOthers(JournalEntry entry) async {
+    try {
+      final content = _createShareContent(entry);
+      
+      if (entry.photos.isNotEmpty) {
+        List<XFile> validPhotos = [];
+        for (String photoPath in entry.photos) {
+          if (File(photoPath).existsSync()) {
+            validPhotos.add(XFile(photoPath));
+          }
+        }
+        
+        if (validPhotos.isNotEmpty) {
+          await Share.shareXFiles(
+            validPhotos,
+            text: content,
+            subject: 'Mon voyage: ${entry.title}',
+          );
+        } else {
+          await Share.share(content, subject: 'Mon voyage: ${entry.title}');
+        }
+      } else {
+        await Share.share(content, subject: 'Mon voyage: ${entry.title}');
+      }
+    } catch (e) {
+      _showShareError('Erreur lors du partage');
+    }
+  }
+
+  String _createShareContent(JournalEntry entry) {
+    return '''🌍 ${entry.title}
+
+📍 ${entry.location}
+📅 ${_formatDateTime(entry.date)}
+😊 ${_getMoodText(entry.mood)}
+
+${entry.content}
+
+${entry.photos.isNotEmpty ? '📷 ${entry.photos.length} photo(s)' : ''}
+
+--- Partagé depuis mon Carnet de Voyage ---''';
+  }
+
+  void _showShareSuccess(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Partage de "${entry.title}"'),
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white),
+            const SizedBox(width: 8),
+            Text(message),
+          ],
+        ),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
       ),
     );
   }
 
-  void _searchEntries() {
+  void _showShareError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Recherche dans le journal à implémenter'),
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error, color: Colors.white),
+            const SizedBox(width: 8),
+            Text(message),
+          ],
+        ),
+        backgroundColor: Colors.orange,
+        duration: const Duration(seconds: 2),
       ),
     );
   }
 
-  void _exportJournal() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Exporter le carnet'),
-        content: const Text('Choisissez le format d\'export :'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Annuler'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Export PDF en cours...'),
-                ),
-              );
-            },
-            child: const Text('PDF'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Export Album photo en cours...'),
-                ),
-              );
-            },
-            child: const Text('Album'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Fonctions utilitaires
+  // Fonctions utilitaires manquantes
   int _getTotalPhotos() {
-    return _journalEntries
-        .map((entry) => entry.photos.length)
-        .fold(0, (sum, count) => sum + count);
+    int total = 0;
+    for (var entry in _journalEntries) {
+      total += entry.photos.length;
+    }
+    return total;
   }
 
   int _getTotalLikes() {
-    return _journalEntries
-        .map((entry) => entry.likes)
-        .fold(0, (sum, likes) => sum + likes);
+    int total = 0;
+    for (var entry in _journalEntries) {
+      total += entry.likes;
+    }
+    return total;
+  }
+
+  Widget _buildStatItem({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, color: Colors.white, size: 24),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
   }
 
   String _formatDateTime(DateTime? date) {
@@ -1088,7 +1595,39 @@ class _JournalScreenState extends State<JournalScreen> {
     final minute = date.minute.toString().padLeft(2, '0');
     return '$day/$month/$year $hour:$minute';
   }
-  
+
+  String _getMoodText(String? mood) {
+    switch (mood) {
+      case 'happy':
+        return 'Heureux 😊';
+      case 'excited':
+        return 'Excité 🎉';
+      case 'amazed':
+        return 'Émerveillé 🤩';
+      case 'sad':
+        return 'Triste 😢';
+      case 'neutral':
+        return 'Neutre 😐';
+      default:
+        return 'Non spécifié';
+    }
+  }
+
+  String _getTypeText(String type) {
+    switch (type) {
+      case 'text':
+        return 'Journal';
+      case 'photo':
+        return 'Photos';
+      case 'food':
+        return 'Cuisine';
+      case 'activity':
+        return 'Activité';
+      default:
+        return 'Autre';
+    }
+  }
+
   Color _getMoodColor(String? mood) {
     switch (mood) {
       case 'happy':
@@ -1105,41 +1644,168 @@ class _JournalScreenState extends State<JournalScreen> {
         return Colors.grey.shade400;
     }
   }
-  
-  Widget _buildStatItem({required IconData icon, required String label, required String value}) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: Colors.white, size: 28),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-      ],
-    );
-  }
-  
+
   IconData _getMoodIcon(String? mood) {
     switch (mood) {
       case 'happy':
-        return Icons.sentiment_satisfied;
-      case 'excited':
-        return Icons.emoji_events;
-      case 'amazed':
         return Icons.sentiment_very_satisfied;
+      case 'excited':
+        return Icons.celebration;
+      case 'amazed':
+        return Icons.star; // ✅ Remplacer star_eyes par star
       case 'sad':
         return Icons.sentiment_dissatisfied;
       case 'neutral':
         return Icons.sentiment_neutral;
       default:
-        return Icons.sentiment_satisfied;
+        return Icons.sentiment_neutral;
     }
+  }
+
+  IconData _getEntryTypeIcon(String type) {
+    switch (type) {
+      case 'text':
+        return Icons.article;
+      case 'photo':
+        return Icons.photo_camera;
+      case 'food':
+        return Icons.restaurant;
+      case 'activity':
+        return Icons.directions_run;
+      default:
+        return Icons.note;
+    }
+  }
+
+  bool _validateForm(String title, String content) {
+    return title.trim().isNotEmpty && content.trim().isNotEmpty;
+  }
+
+  Future<void> _createNewEntry(
+    String title,
+    String content,
+    String mood,
+    String location,
+    String type,
+    List<String> photos,
+  ) async {
+    try {
+      final newEntry = JournalEntry(
+        title: title,
+        content: content,
+        date: DateTime.now(),
+        mood: mood,
+        location: location,
+        type: type,
+        photos: photos,
+        author: 'Vous', // ou récupérer le vrai nom de l'utilisateur
+        likes: 0,
+        comments: 0,
+      );
+
+      await _databaseService.insertEntry(newEntry);
+      await _loadEntries();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 8),
+                Text('Entrée "${title}" ajoutée !'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur lors de l\'ajout: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+}
+
+// Classe pour la recherche
+class JournalSearchDelegate extends SearchDelegate<String> {
+  final List<JournalEntry> entries;
+  final Function(List<JournalEntry>) onSearchResults;
+
+  JournalSearchDelegate(this.entries, this.onSearchResults);
+
+  @override
+  List<Widget> buildActions(BuildContext context) {
+    return [
+      IconButton(
+        icon: const Icon(Icons.clear),
+        onPressed: () {
+          query = '';
+          onSearchResults(entries);
+        },
+      ),
+    ];
+  }
+
+  @override
+  Widget buildLeading(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.arrow_back),
+      onPressed: () {
+        close(context, '');
+        onSearchResults(entries);
+      },
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) {
+    return _buildSearchResults();
+  }
+
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    return _buildSearchResults();
+  }
+
+  Widget _buildSearchResults() {
+    final results = entries.where((entry) {
+      return entry.title.toLowerCase().contains(query.toLowerCase()) ||
+             entry.content.toLowerCase().contains(query.toLowerCase()) ||
+             entry.location.toLowerCase().contains(query.toLowerCase());
+    }).toList();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      onSearchResults(results);
+    });
+
+    return ListView.builder(
+      itemCount: results.length,
+      itemBuilder: (context, index) {
+        final entry = results[index];
+        return ListTile(
+          leading: Icon(
+            _getEntryTypeIcon(entry.type),
+            color: AppTheme.primaryColor,
+          ),
+          title: Text(entry.title),
+          subtitle: Text(
+            '${entry.location} • ${entry.content.substring(0, entry.content.length > 50 ? 50 : entry.content.length)}...',
+          ),
+          onTap: () {
+            close(context, entry.title);
+          },
+        );
+      },
+    );
   }
 
   IconData _getEntryTypeIcon(String type) {
@@ -1154,54 +1820,6 @@ class _JournalScreenState extends State<JournalScreen> {
         return Icons.directions_run;
       default:
         return Icons.note;
-    }
-  }
-
-  // Fonction de validation du formulaire
-  bool _validateForm(String title, String content) {
-    return title.trim().isNotEmpty && content.trim().isNotEmpty;
-  }
-
-  // Fonction pour créer une nouvelle entrée avec SQLite
-  Future<void> _createNewEntry(
-    String title,
-    String content,
-    String mood,
-    String location,
-    String type,
-    List<String> photos,
-  ) async {
-    try {
-      final newEntry = JournalEntry(
-        title: title,
-        content: content,
-        date: DateTime.now(),
-        author: 'Moi',
-        type: type,
-        location: location,
-        mood: mood,
-        photos: photos,
-      );
-
-      await _databaseService.insertEntry(newEntry);
-      await _loadEntries(); // Recharger les entrées
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('✅ Entrée "${title}" ajoutée avec succès !'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erreur lors de l\'ajout: $e'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
     }
   }
 }

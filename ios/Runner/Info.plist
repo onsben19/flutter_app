@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Travelapp</string>
+	<string>Travel App</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -41,13 +41,26 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Cette app a besoin d'accéder à vos photos pour ajouter des images à votre journal de voyage.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>fb</string>
+		<string>fbauth2</string>
+		<string>instagram</string>
+		<string>instagram-stories</string>
+		<string>twitter</string>
+		<string>whatsapp</string>
+		<string>sms</string>
+		<string>mailto</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Cette app a besoin d'accéder à votre caméra pour prendre des photos pour votre journal.</string>
+	<string>Cette app a besoin d'accéder à l'appareil photo pour ajouter des photos à votre journal de voyage.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Cette app a besoin d'accéder à votre galerie photo pour ajouter des images à votre journal de voyage.</string>
 </dict>
 </plist>

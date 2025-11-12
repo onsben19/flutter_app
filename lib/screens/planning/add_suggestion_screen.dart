@@ -210,7 +210,11 @@ class _AddSuggestionScreenState extends State<AddSuggestionScreen> {
                   children: [
                     const Text(
                       'Informations supplémentaires',
-                      style: AppTheme.headingSmall,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimaryColor,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     
