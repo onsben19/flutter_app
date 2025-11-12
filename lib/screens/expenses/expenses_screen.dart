@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/app_user_icon_button.dart'; // 👈 add this
 
 class ExpensesScreen extends StatefulWidget {
   const ExpensesScreen({super.key});
@@ -44,11 +45,12 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   Widget build(BuildContext context) {
     final totalExpenses = _expenses.fold<double>(
       0.0,
-      (sum, expense) => sum + (expense['amount'] as double),
+          (sum, expense) => sum + (expense['amount'] as double),
     );
 
     return Scaffold(
       appBar: AppBar(
+        leading: const AppUserIconButton(), // 👈 user icon on the left
         title: const Text('Dépenses'),
         actions: [
           IconButton(
@@ -265,8 +267,9 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
             Text('Date: ${_formatDate(expense['date'])}'),
             const SizedBox(height: 8),
             const Text('Participants:'),
-            ...expense['participants'].map<Widget>((participant) => 
-              Text('• $participant')).toList(),
+            ...expense['participants']
+                .map<Widget>((participant) => Text('• $participant'))
+                .toList(),
           ],
         ),
         actions: [

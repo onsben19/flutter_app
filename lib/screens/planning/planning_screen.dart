@@ -50,7 +50,9 @@ class _PlanningScreenState extends State<PlanningScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+
       appBar: AppBar(
+        leading: const AppUserIconButton(), // 👈 user icon now on the LEFT
         title: const Text('Planification'),
         bottom: TabBar(
           controller: _tabController,
@@ -87,6 +89,7 @@ class _PlanningScreenState extends State<PlanningScreen>
           ),
         ],
       ),
+
       body: TabBarView(
         controller: _tabController,
         children: [

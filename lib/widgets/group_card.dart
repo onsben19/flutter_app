@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 
@@ -16,7 +17,10 @@ class GroupCard extends StatelessWidget {
     final startDate = group['startDate'] as DateTime;
     final endDate = group['endDate'] as DateTime;
     final isActive = group['isActive'] as bool;
-    
+
+    // We expect GroupsScreen to pass `imagePath` when available
+    final String? imagePath = group['imagePath'] as String?;
+
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -24,28 +28,29 @@ class GroupCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image de couverture
-            Container(
+            // Image de couverture (photo si dispo, sinon gradient)
+            SizedBox(
               height: 120,
               width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppTheme.primaryColor,
-                    AppTheme.secondaryColor,
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
               child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  // TODO: Remplacer par une vraie image
-                  Container(
-                    width: double.infinity,
-                    height: double.infinity,
-                    color: Colors.black.withOpacity(0.2),
-                  ),
+                  if (imagePath != null && imagePath.isNotEmpty && File(imagePath).existsSync())
+                    Image.file(
+                      File(imagePath),
+                      fit: BoxFit.cover,
+                    )
+                  else
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [AppTheme.primaryColor, AppTheme.secondaryColor],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                    ),
+                  Container(color: Colors.black.withOpacity(0.2)),
                   const Center(
                     child: Icon(
                       Icons.travel_explore,
@@ -53,20 +58,14 @@ class GroupCard extends StatelessWidget {
                       color: Colors.white,
                     ),
                   ),
-                  
                   // Badge de statut
                   Positioned(
                     top: 8,
                     right: 8,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: isActive 
-                            ? Colors.green 
-                            : Colors.grey,
+                        color: isActive ? Colors.green : Colors.grey,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -82,7 +81,7 @@ class GroupCard extends StatelessWidget {
                 ],
               ),
             ),
-            
+
             // Contenu
             Padding(
               padding: const EdgeInsets.all(16),
@@ -103,10 +102,7 @@ class GroupCard extends StatelessWidget {
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: AppTheme.primaryColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
@@ -114,11 +110,7 @@ class GroupCard extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
-                              Icons.person,
-                              size: 16,
-                              color: AppTheme.primaryColor,
-                            ),
+                            const Icon(Icons.person, size: 16, color: AppTheme.primaryColor),
                             const SizedBox(width: 4),
                             Text(
                               '${group['memberCount']}',
@@ -133,9 +125,9 @@ class GroupCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 8),
-                  
+
                   // Description
                   Text(
                     group['description'],
@@ -146,17 +138,13 @@ class GroupCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  
+
                   const SizedBox(height: 12),
-                  
+
                   // Dates
                   Row(
                     children: [
-                      Icon(
-                        Icons.calendar_today,
-                        size: 16,
-                        color: Colors.grey.shade600,
-                      ),
+                      Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
                       const SizedBox(width: 8),
                       Text(
                         '${_formatDate(startDate)} - ${_formatDate(endDate)}',
@@ -168,9 +156,9 @@ class GroupCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 12),
-                  
+
                   // Actions rapides
                   Row(
                     children: [
@@ -227,11 +215,7 @@ class GroupCard extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 20,
-              color: AppTheme.primaryColor,
-            ),
+            Icon(icon, size: 20, color: AppTheme.primaryColor),
             const SizedBox(height: 4),
             Text(
               label,
@@ -248,11 +232,7 @@ class GroupCard extends StatelessWidget {
   }
 
   String _formatDate(DateTime date) {
-    const months = [
-      'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun',
-      'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'
-    ];
-    
+    const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
     return '${date.day} ${months[date.month - 1]}';
   }
 }

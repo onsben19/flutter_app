@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
-import '../main_navigation_screen.dart';
+import '../main_navigation_screen.dart'; // (kept if you use it elsewhere)
+import 'login_screen.dart';              // ⬅️ we navigate to this after register
+import '../../services/auth_repository.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -20,6 +22,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
   bool _acceptTerms = false;
 
+  final AuthRepository _authRepo = AuthRepository();
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -30,29 +34,64 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   void _handleRegister() async {
-    if (_formKey.currentState!.validate() && _acceptTerms) {
-      setState(() {
-        _isLoading = true;
-      });
-
-      // Simulation d'une inscription
-      await Future.delayed(const Duration(seconds: 2));
-
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const MainNavigationScreen(),
-          ),
-        );
-      }
-    } else if (!_acceptTerms) {
+    if (!_acceptTerms) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Veuillez accepter les conditions d\'utilisation'),
           backgroundColor: AppTheme.errorColor,
         ),
       );
+      return;
+    }
+
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final fullName = _nameController.text.trim();
+      final email = _emailController.text.trim().toLowerCase();
+      final password = _passwordController.text;
+
+      await _authRepo.register(
+        fullName: fullName,
+        email: email,
+        password: password,
+      );
+
+      if (!mounted) return;
+
+      // ✅ After register, go to LoginScreen (not home)
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+
+      // Optional: toast
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Compte créé. Connectez-vous.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } on EmailAlreadyUsed catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cet email est déjà utilisé.'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur lors de l’inscription : $e'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -74,26 +113,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 20),
-                
-                // Titre
-                const Text(
-                  'Créer un compte',
-                  style: AppTheme.headingLarge,
-                ),
+
+                const Text('Créer un compte', style: AppTheme.headingLarge),
                 const SizedBox(height: 8),
                 const Text(
                   'Rejoignez la communauté des voyageurs',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: AppTheme.textSecondaryColor,
-                  ),
+                  style: TextStyle(fontSize: 16, color: AppTheme.textSecondaryColor),
                 ),
-                
+
                 const SizedBox(height: 40),
-                
-                // Champ nom
+
                 TextFormField(
                   controller: _nameController,
+                  textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
                     labelText: 'Nom complet',
                     prefixIcon: Icon(Icons.person_outlined),
@@ -102,19 +134,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     if (value == null || value.isEmpty) {
                       return 'Veuillez saisir votre nom';
                     }
-                    if (value.length < 2) {
+                    if (value.trim().length < 2) {
                       return 'Le nom doit contenir au moins 2 caractères';
                     }
                     return null;
                   },
                 ),
-                
+
                 const SizedBox(height: 20),
-                
-                // Champ email
+
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
                     labelText: 'Email',
                     prefixIcon: Icon(Icons.email_outlined),
@@ -129,13 +161,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     return null;
                   },
                 ),
-                
+
                 const SizedBox(height: 20),
-                
-                // Champ mot de passe
+
                 TextFormField(
                   controller: _passwordController,
                   obscureText: !_isPasswordVisible,
+                  textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
                     labelText: 'Mot de passe',
                     prefixIcon: const Icon(Icons.lock_outlined),
@@ -146,9 +178,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             : Icons.visibility_off_outlined,
                       ),
                       onPressed: () {
-                        setState(() {
-                          _isPasswordVisible = !_isPasswordVisible;
-                        });
+                        setState(() => _isPasswordVisible = !_isPasswordVisible);
                       },
                     ),
                   ),
@@ -162,10 +192,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     return null;
                   },
                 ),
-                
+
                 const SizedBox(height: 20),
-                
-                // Champ confirmation mot de passe
+
                 TextFormField(
                   controller: _confirmPasswordController,
                   obscureText: !_isConfirmPasswordVisible,
@@ -179,9 +208,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             : Icons.visibility_off_outlined,
                       ),
                       onPressed: () {
-                        setState(() {
-                          _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
-                        });
+                        setState(() => _isConfirmPasswordVisible = !_isConfirmPasswordVisible);
                       },
                     ),
                   ),
@@ -195,90 +222,75 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     return null;
                   },
                 ),
-                
+
                 const SizedBox(height: 24),
-                
-                // Acceptation des conditions
+
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Checkbox(
                       value: _acceptTerms,
-                      onChanged: (value) {
-                        setState(() {
-                          _acceptTerms = value ?? false;
-                        });
-                      },
+                      onChanged: _isLoading
+                          ? null
+                          : (value) => setState(() => _acceptTerms = value ?? false),
                     ),
                     const Expanded(
                       child: Padding(
                         padding: EdgeInsets.only(top: 12),
                         child: Text(
                           'J\'accepte les conditions d\'utilisation et la politique de confidentialité',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: AppTheme.textSecondaryColor,
-                          ),
+                          style: TextStyle(fontSize: 14, color: AppTheme.textSecondaryColor),
                         ),
                       ),
                     ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 32),
-                
-                // Bouton d'inscription
+
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _handleRegister,
                     child: _isLoading
                         ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
                         : const Text('Créer mon compte'),
                   ),
                 ),
-                
+
                 const SizedBox(height: 32),
-                
-                // Divider
+
                 Row(
                   children: [
                     Expanded(child: Divider(color: Colors.grey.shade300)),
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        'ou',
-                        style: TextStyle(color: AppTheme.textSecondaryColor),
-                      ),
+                      child: Text('ou', style: TextStyle(color: AppTheme.textSecondaryColor)),
                     ),
                     Expanded(child: Divider(color: Colors.grey.shade300)),
                   ],
                 ),
-                
+
                 const SizedBox(height: 32),
-                
-                // Boutons de connexion sociale
+
                 Column(
                   children: [
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
-                        onPressed: () {
-                          // TODO: Inscription Google
-                        },
+                        onPressed: _isLoading ? null : () {},
                         icon: Image.asset(
                           'assets/images/google_logo.png',
-                          height: 20,
-                          width: 20,
+                          height: 20, width: 20,
                           errorBuilder: (context, error, stackTrace) =>
-                              const Icon(Icons.account_circle, size: 20),
+                          const Icon(Icons.account_circle, size: 20),
                         ),
                         label: const Text('Continuer avec Google'),
                         style: OutlinedButton.styleFrom(
@@ -290,9 +302,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
-                        onPressed: () {
-                          // TODO: Inscription Facebook
-                        },
+                        onPressed: _isLoading ? null : () {},
                         icon: const Icon(Icons.facebook, color: Colors.blue),
                         label: const Text('Continuer avec Facebook'),
                         style: OutlinedButton.styleFrom(
@@ -302,10 +312,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 48),
-                
-                // Lien vers connexion
+
                 Center(
                   child: RichText(
                     text: TextSpan(
@@ -314,9 +323,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       children: [
                         WidgetSpan(
                           child: GestureDetector(
-                            onTap: () {
-                              Navigator.pop(context);
-                            },
+                            onTap: _isLoading ? null : () => Navigator.pop(context),
                             child: const Text(
                               'Se connecter',
                               style: TextStyle(
