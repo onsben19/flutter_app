@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/suggestion_card.dart';
 import '../../screens/planning/add_suggestion_screen.dart';
 import '../../services/database_service.dart';
 import '../../models/planification.dart';
+import '../../services/weather_service.dart';
 
 class PlanningScreen extends StatefulWidget {
   const PlanningScreen({super.key});
@@ -12,12 +13,24 @@ class PlanningScreen extends StatefulWidget {
   State<PlanningScreen> createState() => _PlanningScreenState();
 }
 
+class _DayState {
+  _DayState(this.date);
+  final DateTime date;
+  final List<Map<String, dynamic>> activities = [];
+  int nextMin = 0; // minutes from day start
+}
+
 class _PlanningScreenState extends State<PlanningScreen>
     with TickerProviderStateMixin {
   late TabController _tabController;
   final DatabaseService _db = DatabaseService();
+  final WeatherService _weatherService = WeatherService();
+
   List<Planification> _suggestions = [];
   bool _loading = true;
+  Map<String, WeatherInfo> _weather = {};
+  static const double _tripLat = 48.8566;
+  static const double _tripLon = 2.3522;
 
   List<Map<String, dynamic>> _itinerary = [];
 
@@ -41,9 +54,22 @@ class _PlanningScreenState extends State<PlanningScreen>
         title: const Text('Planification'),
         bottom: TabBar(
           controller: _tabController,
+          // Improve contrast for selected/unselected states on green AppBar
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+          indicatorColor: Colors.white,
+          indicatorWeight: 3,
+          indicatorSize: TabBarIndicatorSize.label,
+          overlayColor: MaterialStateProperty.resolveWith<Color?>((states) {
+            if (states.contains(MaterialState.pressed)) {
+              return Colors.white24;
+            }
+            return null;
+          }),
           tabs: const [
             Tab(icon: Icon(Icons.how_to_vote), text: 'Suggestions'),
-            Tab(icon: Icon(Icons.schedule), text: 'Itinéraire'),
+            Tab(icon: Icon(Icons.schedule), text: 'Itin\u00E9raire'),
           ],
         ),
         actions: [
@@ -52,9 +78,12 @@ class _PlanningScreenState extends State<PlanningScreen>
             onPressed: _showFilterDialog,
           ),
           IconButton(
-            tooltip: 'Générer Itinéraire',
+            tooltip: 'G\u00E9n\u00E9rer Itin\u00E9raire',
             icon: const Icon(Icons.auto_mode),
-            onPressed: () => _generateItinerary(),
+            onPressed: () async {
+              _generateItinerary();
+              await _loadWeatherForItinerary();
+            },
           ),
         ],
       ),
@@ -77,7 +106,7 @@ class _PlanningScreenState extends State<PlanningScreen>
           }
         },
         icon: const Icon(Icons.add),
-        label: const Text('Suggérer'),
+        label: const Text('Sugg\u00E9rer'),
       ),
     );
   }
@@ -101,14 +130,11 @@ class _PlanningScreenState extends State<PlanningScreen>
                   value: _loading ? '...' : '${_suggestions.length}',
                 ),
               ),
-              Container(
-                  width: 1,
-                  height: 40,
-                  color: AppTheme.primaryColor.withOpacity(0.3)),
+              Container(width: 1, height: 40, color: AppTheme.primaryColor.withOpacity(0.3)),
               Expanded(
                 child: _buildStatItem(
                   icon: Icons.check_circle,
-                  label: 'Validées',
+                  label: 'Valid\u00E9es',
                   value: _loading
                       ? '...'
                       : '${_suggestions.where((s) {
@@ -118,10 +144,7 @@ class _PlanningScreenState extends State<PlanningScreen>
                         }).length}',
                 ),
               ),
-              Container(
-                  width: 1,
-                  height: 40,
-                  color: AppTheme.primaryColor.withOpacity(0.3)),
+              Container(width: 1, height: 40, color: AppTheme.primaryColor.withOpacity(0.3)),
               Expanded(
                 child: _buildStatItem(
                   icon: Icons.pending,
@@ -146,22 +169,21 @@ class _PlanningScreenState extends State<PlanningScreen>
                   itemCount: _suggestions.length,
                   itemBuilder: (context, index) {
                     final plan = _suggestions[index];
-                     final suggestion = {
-                       'id': plan.id?.toString() ?? '',
-                       'title': plan.title,
-                       'description': plan.description,
-                       'category': plan.category,
-                       'duration': plan.duration,
-                       'cost': plan.cost,
-                       'votes': plan.votes,
-                       'totalMembers': plan.totalMembers,
-                       'suggestedBy': plan.suggestedBy,
-                       'imageUrl':
-                           plan.imageUrls.isNotEmpty ? plan.imageUrls.first : '',
-                        'tripDay': plan.tripDay,
-                        'tripTime': plan.tripTime,
-                       'isVoted': plan.isVoted,
-                     };
+                    final suggestion = {
+                      'id': plan.id?.toString() ?? '',
+                      'title': plan.title,
+                      'description': plan.description,
+                      'category': plan.category,
+                      'duration': plan.duration,
+                      'cost': plan.cost,
+                      'votes': plan.votes,
+                      'totalMembers': plan.totalMembers,
+                      'suggestedBy': plan.suggestedBy,
+                      'imageUrl': plan.imageUrls.isNotEmpty ? plan.imageUrls.first : '',
+                      'tripDay': plan.tripDay,
+                      'tripTime': plan.tripTime,
+                      'isVoted': plan.isVoted,
+                    };
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 16),
                       child: SuggestionCard(
@@ -184,9 +206,17 @@ class _PlanningScreenState extends State<PlanningScreen>
       itemCount: _itinerary.length,
       itemBuilder: (context, index) {
         final day = _itinerary[index];
+        final date = day['date'] as DateTime;
+        final wi = _weather[_dateKey(date)];
+        final Color? tint = wi == null
+            ? null
+            : wi.isRainy
+                ? Colors.blueGrey.withOpacity(0.06)
+                : Colors.orange.withOpacity(0.06);
         return Card(
           margin: const EdgeInsets.only(bottom: 16),
-          child: Padding(
+          child: Container(
+            decoration: BoxDecoration(color: tint),
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -196,12 +226,13 @@ class _PlanningScreenState extends State<PlanningScreen>
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                          color: AppTheme.primaryColor,
-                          borderRadius: BorderRadius.circular(8)),
-                      child: Text('J${day['day']}',
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold)),
+                        color: AppTheme.primaryColor,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'J${day['day']}',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -209,17 +240,38 @@ class _PlanningScreenState extends State<PlanningScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Jour ${day['day']}',
-                              style: const TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.w600)),
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                           Text(_formatDate(day['date'] as DateTime),
-                              style: const TextStyle(
-                                  color: AppTheme.textSecondaryColor)),
+                              style: const TextStyle(color: AppTheme.textSecondaryColor)),
                         ],
                       ),
                     ),
                     IconButton(icon: const Icon(Icons.add), onPressed: () {}),
                   ],
                 ),
+                if (wi != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        wi.isRainy ? Icons.umbrella : Icons.wb_sunny,
+                        color: wi.isRainy ? Colors.blueGrey : Colors.orange,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${wi.main} \u00B7 ${wi.temp.toStringAsFixed(0)}\u00B0C \u00B7 ${(wi.pop * 100).round()}% pluie',
+                        style: const TextStyle(fontSize: 13, color: AppTheme.textSecondaryColor),
+                      ),
+                      const Spacer(),
+                      if (wi.isRainy && index < _itinerary.length - 1)
+                        TextButton(
+                          onPressed: () => _swapDays(index),
+                          child: const Text('\u00C9changer avec le jour suivant'),
+                        ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 16),
                 ...day['activities'].map<Widget>((activity) {
                   return Container(
@@ -231,36 +283,31 @@ class _PlanningScreenState extends State<PlanningScreen>
                           : Colors.orange.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                          color: activity['status'] == 'confirmed'
-                              ? Colors.green.withOpacity(0.3)
-                              : Colors.orange.withOpacity(0.3)),
+                        color: activity['status'] == 'confirmed'
+                            ? Colors.green.withOpacity(0.3)
+                            : Colors.orange.withOpacity(0.3),
+                      ),
                     ),
                     child: Row(
                       children: [
                         Column(
                           children: [
                             Text(activity['time'],
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16)),
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                             Text(activity['duration'],
                                 style: const TextStyle(
-                                    fontSize: 12,
-                                    color: AppTheme.textSecondaryColor)),
+                                    fontSize: 12, color: AppTheme.textSecondaryColor)),
                           ],
                         ),
                         const SizedBox(width: 16),
                         Expanded(
-                            child: Text(activity['title'],
-                                style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w500))),
+                          child: Text(activity['title'],
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                        ),
                         Icon(
-                            activity['status'] == 'confirmed'
-                                ? Icons.check_circle
-                                : Icons.pending,
-                            color: activity['status'] == 'confirmed'
-                                ? Colors.green
-                                : Colors.orange),
+                          activity['status'] == 'confirmed' ? Icons.check_circle : Icons.pending,
+                          color: activity['status'] == 'confirmed' ? Colors.green : Colors.orange,
+                        ),
                       ],
                     ),
                   );
@@ -273,20 +320,16 @@ class _PlanningScreenState extends State<PlanningScreen>
     );
   }
 
-  Widget _buildStatItem(
-      {required IconData icon, required String label, required String value}) {
+  Widget _buildStatItem({required IconData icon, required String label, required String value}) {
     return Column(
       children: [
         Icon(icon, color: AppTheme.primaryColor, size: 24),
         const SizedBox(height: 8),
-        Text(value,
-            style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.primaryColor)),
-        Text(label,
-            style: const TextStyle(
-                fontSize: 12, color: AppTheme.textSecondaryColor)),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.primaryColor),
+        ),
+        Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondaryColor)),
       ],
     );
   }
@@ -299,9 +342,7 @@ class _PlanningScreenState extends State<PlanningScreen>
   Future<void> _editSuggestion(Planification suggestion) async {
     final updated = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => AddSuggestionScreen(initial: suggestion),
-      ),
+      MaterialPageRoute(builder: (_) => AddSuggestionScreen(initial: suggestion)),
     );
     if (updated == true) {
       await _loadSuggestions();
@@ -313,12 +354,9 @@ class _PlanningScreenState extends State<PlanningScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Supprimer la suggestion'),
-        content:
-            const Text('Êtes-vous sûr de vouloir supprimer cette suggestion ?'),
+        content: const Text('\u00CAtes-vous s\u00FBr de vouloir supprimer cette suggestion ?'),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annuler')),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
           TextButton(
             onPressed: () async {
               await _db.deletePlanification(suggestionId);
@@ -341,32 +379,92 @@ class _PlanningScreenState extends State<PlanningScreen>
         _suggestions = list;
         _loading = false;
       });
-      // Generate itinerary based on latest suggestions and votes
       _generateItinerary();
+      await _loadWeatherForItinerary();
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Erreur chargement suggestions: $e'),
-            backgroundColor: Colors.red),
+        SnackBar(content: Text('Erreur chargement suggestions: $e'), backgroundColor: Colors.red),
       );
     }
   }
 
+  String _dateKey(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _loadWeatherForItinerary() async {
+    try {
+      final dates = _itinerary
+          .map<DateTime>((d) => d['date'] as DateTime)
+          .map((d) => DateTime(d.year, d.month, d.day))
+          .toList();
+      final Map<String, WeatherInfo> map = {};
+      for (final d in dates) {
+        final info = await _weatherService.fetchDayForecast(lat: _tripLat, lon: _tripLon, date: d);
+        if (info != null) {
+          map[_dateKey(d)] = info;
+        }
+      }
+      if (!mounted) return;
+      setState(() => _weather = map);
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  void _swapDays(int index) {
+    if (index < 0 || index >= _itinerary.length - 1) return;
+    final tmp = _itinerary[index];
+    _itinerary[index] = _itinerary[index + 1];
+    _itinerary[index + 1] = tmp;
+    for (var i = 0; i < _itinerary.length; i++) {
+      _itinerary[i]['day'] = i + 1;
+    }
+    setState(() {});
+  }
+
   int _parseDurationToMinutes(String value) {
     if (value.isEmpty) return 0;
-    final s = value.toLowerCase().replaceAll(' ', '');
-    final hMatch = RegExp(r"(\d+)h").firstMatch(s);
-    final mMatch = RegExp(r"(\d+)m").firstMatch(s);
-    int minutes = 0;
-    if (hMatch != null) minutes += int.parse(hMatch.group(1)!)*60;
-    if (mMatch != null) minutes += int.parse(mMatch.group(1)!);
-    if (minutes == 0 && RegExp(r'^\d+(\.\d+)?h$').hasMatch(s)) {
-      final hours = double.parse(s.replaceAll('h', ''));
-      minutes = (hours * 60).round();
+    final s = value.toLowerCase().trim();
+
+    // HH:MM or H:MM
+    final clock = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(s);
+    if (clock != null) {
+      final h = int.parse(clock.group(1)!);
+      final m = int.parse(clock.group(2)!);
+      return h * 60 + m;
     }
-    return minutes;
+
+    final noSpace = s.replaceAll(' ', '');
+
+    // XhYY
+    final hm = RegExp(r'^(\d+)h(\d{1,2})$').firstMatch(noSpace);
+    if (hm != null) {
+      final h = int.parse(hm.group(1)!);
+      final m = int.parse(hm.group(2)!);
+      return h * 60 + m;
+    }
+
+    // Xh
+    final hOnly = RegExp(r'^(\d+)h$').firstMatch(noSpace);
+    if (hOnly != null) return int.parse(hOnly.group(1)!) * 60;
+
+    // Xm
+    final mOnly = RegExp(r'^(\d+)m$').firstMatch(noSpace);
+    if (mOnly != null) return int.parse(mOnly.group(1)!);
+
+    // 1.5h
+    final dec = RegExp(r'^(\d+(?:\.\d+)?)h$').firstMatch(noSpace);
+    if (dec != null) {
+      final hours = double.parse(dec.group(1)!);
+      return (hours * 60).round();
+    }
+
+    // Bare number => minutes
+    final bare = RegExp(r'^(\d+)$').firstMatch(noSpace);
+    if (bare != null) return int.parse(bare.group(1)!);
+
+    return 0;
   }
 
   void _generateItinerary({
@@ -381,11 +479,22 @@ class _PlanningScreenState extends State<PlanningScreen>
     }
 
     final start = startDate ?? DateTime.now();
-    final items = _suggestions
-        .where((s) => _parseDurationToMinutes(s.duration) > 0)
-        .toList();
 
-    items.sort((a, b) {
+    int startOfDayMin = dayStartHour * 60;
+    String hmFromStart(int minFromStart) {
+      final total = startOfDayMin + minFromStart;
+      final h = total ~/ 60;
+      final m = total % 60;
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+    }
+
+    // Separate pinned and remaining suggestions
+    final all = _suggestions.where((s) => _parseDurationToMinutes(s.duration) > 0).toList();
+    final pinned = all.where((s) => (s.tripDay) > 0).toList();
+    final remaining = all.where((s) => (s.tripDay) <= 0).toList();
+
+    // Sort remaining by priority (approved first, approval rate, votes, createdAt)
+    int priorityCompare(Planification a, Planification b) {
       double rateA = (a.totalMembers > 0) ? a.votes / a.totalMembers : 0.0;
       double rateB = (b.totalMembers > 0) ? b.votes / b.totalMembers : 0.0;
       if (approvedFirst) {
@@ -398,45 +507,94 @@ class _PlanningScreenState extends State<PlanningScreen>
       final byVotes = b.votes.compareTo(a.votes);
       if (byVotes != 0) return byVotes;
       return a.createdAt.compareTo(b.createdAt);
-    });
+    }
+    remaining.sort(priorityCompare);
 
-    final List<Map<String, dynamic>> result = [];
-    int day = 1;
-    var currentDate = DateTime(start.year, start.month, start.day);
-    int used = 0;
-    int curH = dayStartHour;
-    int curM = 0;
+    // Day state helpers
+    final Map<int, _DayState> days = {};
+    _DayState ensureDay(int dayIndex) {
+      return days.putIfAbsent(dayIndex, () {
+        final d = DateTime(start.year, start.month, start.day).add(Duration(days: dayIndex - 1));
+        return _DayState(d);
+      });
+    }
 
-    result.add({'day': day, 'date': currentDate, 'activities': <Map<String, dynamic>>[]});
-
-    String _hm(int h, int m) =>
-        '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
-
-    for (final s in items) {
-      final dur = _parseDurationToMinutes(s.duration);
-      if (dur <= 0) continue;
-
-      if (used + dur > dayCapacityMinutes) {
-        day += 1;
-        currentDate = currentDate.add(const Duration(days: 1));
-        used = 0;
-        curH = dayStartHour;
-        curM = 0;
-        result.add({'day': day, 'date': currentDate, 'activities': <Map<String, dynamic>>[]});
+    int parseTripTimeToStartMin(String t) {
+      final m = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(t.trim());
+      if (m == null) return -1;
+      final h = int.parse(m.group(1)!);
+      final min = int.parse(m.group(2)!);
+      final total = h * 60 + min;
+      return total - startOfDayMin; // relative to day start
+    }
+    void placeActivity(_DayState dayState, Planification s, int startMin, int dur) {
+      if (startMin < 0) startMin = 0;
+      if (startMin + dur > dayCapacityMinutes) {
+        // Clamp to fit within capacity if possible
+        if (dur <= dayCapacityMinutes) {
+          startMin = dayCapacityMinutes - dur;
+        } else {
+          // If duration longer than capacity, cut at capacity
+          dur = dayCapacityMinutes;
+          startMin = 0;
+        }
       }
-
       final approved = s.totalMembers > 0 && s.votes >= (s.totalMembers * 0.6).ceil();
-      result.last['activities'].add({
-        'time': _hm(curH, curM),
+      dayState.activities.add({
+        'startMin': startMin,
+        'time': hmFromStart(startMin),
         'title': s.title,
         'duration': s.duration.isEmpty ? '${(dur / 60).toStringAsFixed(1)}h' : s.duration,
         'status': approved ? 'confirmed' : 'pending',
       });
+      if (startMin + dur > dayState.nextMin) dayState.nextMin = startMin + dur;
+    }
 
-      final next = curM + dur;
-      curH += next ~/ 60;
-      curM = next % 60;
-      used += dur;
+    // 1) Place pinned items first
+    for (final s in pinned) {
+      final dur = _parseDurationToMinutes(s.duration);
+      if (dur <= 0) continue;
+      final dayIdx = s.tripDay;
+      final dayState = ensureDay(dayIdx);
+      int desiredStart = -1;
+      if (s.tripTime.trim().isNotEmpty) {
+        desiredStart = parseTripTimeToStartMin(s.tripTime);
+      }
+      if (desiredStart < 0) desiredStart = dayState.nextMin;
+      placeActivity(dayState, s, desiredStart, dur);
+    }
+
+    // 2) Fill remaining capacity with the rest
+    int dayPtr = days.isEmpty ? 1 : days.keys.reduce((a, b) => a > b ? a : b).clamp(1, 1 << 30);
+    for (final s in remaining) {
+      final dur = _parseDurationToMinutes(s.duration);
+      if (dur <= 0) continue;
+      while (true) {
+        final dayState = ensureDay(dayPtr);
+        if (dayState.nextMin + dur <= dayCapacityMinutes) {
+          placeActivity(dayState, s, dayState.nextMin, dur);
+          break;
+        } else {
+          dayPtr += 1; // move to next day
+        }
+      }
+    }
+
+    // Build ordered result and sort activities by start time
+    final List<Map<String, dynamic>> result = [];
+    final orderedDays = days.keys.toList()..sort();
+    for (final d in orderedDays) {
+      final ds = days[d]!;
+      ds.activities.sort((a, b) => (a['startMin'] as int).compareTo(b['startMin'] as int));
+      final acts = ds.activities
+          .map((a) => {
+                'time': a['time'],
+                'title': a['title'],
+                'duration': a['duration'],
+                'status': a['status'],
+              })
+          .toList();
+      result.add({'day': d, 'date': ds.date, 'activities': acts});
     }
 
     setState(() {
@@ -447,17 +605,17 @@ class _PlanningScreenState extends State<PlanningScreen>
   String _formatDate(DateTime date) {
     const months = [
       'Janvier',
-      'Février',
+      'F\u00E9vrier',
       'Mars',
       'Avril',
       'Mai',
       'Juin',
       'Juillet',
-      'Août',
+      'Ao\u00FBt',
       'Septembre',
       'Octobre',
       'Novembre',
-      'Décembre'
+      'D\u00E9cembre',
     ];
     return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
@@ -467,11 +625,9 @@ class _PlanningScreenState extends State<PlanningScreen>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Filtrer les suggestions'),
-        content: const Text('Filtrage à implémenter'),
+        content: const Text('Filtrage \u00E0 impl\u00E9menter'),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Fermer')),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fermer')),
         ],
       ),
     );
