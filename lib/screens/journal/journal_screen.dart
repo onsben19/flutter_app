@@ -5,6 +5,7 @@ import 'package:path/path.dart' as path;
 import '../../theme/app_theme.dart';
 import '../../models/journal_entry.dart';
 import '../../services/database_service.dart';
+import '../../widgets/app_user_icon_button.dart';
 
 class JournalScreen extends StatefulWidget {
   const JournalScreen({super.key});
@@ -54,6 +55,7 @@ class _JournalScreenState extends State<JournalScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const AppUserIconButton(), // 👈 user icon on the left
         title: const Text('Carnet de Voyage'),
         actions: [
           IconButton(

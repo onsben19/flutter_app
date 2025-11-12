@@ -4,7 +4,12 @@ class SessionUser {
   final int id;
   final String email;
   final String name;
-  const SessionUser({required this.id, required this.email, required this.name});
+
+  const SessionUser({
+    required this.id,
+    required this.email,
+    required this.name,
+  });
 }
 
 class SessionService {
@@ -34,11 +39,17 @@ class SessionService {
     return SessionUser(id: id, email: email, name: name);
   }
 
-  /// Clear on logout
-  static Future<void> clear() async {
+  /// Clear session (logout)
+  static Future<void> signOut() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kId);
     await prefs.remove(_kEmail);
     await prefs.remove(_kName);
+  }
+
+  /// Quick check for whether a user is logged in
+  static Future<bool> isLoggedIn() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.containsKey(_kId);
   }
 }

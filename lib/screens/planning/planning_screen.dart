@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/suggestion_card.dart';
 import 'add_suggestion_screen.dart';
+import '../../widgets/app_user_icon_button.dart'; // make sure to import this
 
 class PlanningScreen extends StatefulWidget {
   const PlanningScreen({super.key});
@@ -105,7 +106,9 @@ class _PlanningScreenState extends State<PlanningScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+
       appBar: AppBar(
+        leading: const AppUserIconButton(), // 👈 user icon now on the LEFT
         title: const Text('Planification'),
         bottom: TabBar(
           controller: _tabController,
@@ -129,6 +132,7 @@ class _PlanningScreenState extends State<PlanningScreen>
           ),
         ],
       ),
+
       body: TabBarView(
         controller: _tabController,
         children: [

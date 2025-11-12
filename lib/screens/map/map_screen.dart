@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/app_user_icon_button.dart'; // 👈 add this
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -50,6 +51,7 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const AppUserIconButton(), // 👈 user icon on the left
         title: const Text('Carte Interactive'),
         actions: [
           IconButton(
@@ -110,7 +112,7 @@ class _MapScreenState extends State<MapScreen> {
                       ],
                     ),
                   ),
-                  
+
                   // Points d'intérêt simulés
                   ..._locations.map((location) => Positioned(
                     left: 50 + (_locations.indexOf(location) * 80.0),
@@ -157,12 +159,12 @@ class _MapScreenState extends State<MapScreen> {
                         ),
                       ),
                     ),
-                  )).toList(),
+                  )),
                 ],
               ),
             ),
           ),
-          
+
           // Liste des lieux
           Expanded(
             flex: 1,
@@ -198,7 +200,7 @@ class _MapScreenState extends State<MapScreen> {
                     ],
                   ),
                 ),
-                
+
                 // Liste des lieux
                 Expanded(
                   child: ListView.builder(
@@ -210,9 +212,8 @@ class _MapScreenState extends State<MapScreen> {
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: location['isVisited'] 
-                                ? Colors.green 
-                                : AppTheme.primaryColor,
+                            backgroundColor:
+                            location['isVisited'] ? Colors.green : AppTheme.primaryColor,
                             child: Icon(
                               _getLocationIcon(location['type']),
                               color: Colors.white,
@@ -386,17 +387,21 @@ class _MapScreenState extends State<MapScreen> {
         title: const Text('Filtrer les lieux'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          children: _filters.map((filter) => RadioListTile<String>(
-            title: Text(filter),
-            value: filter,
-            groupValue: _selectedFilter,
-            onChanged: (value) {
-              setState(() {
-                _selectedFilter = value!;
-              });
-              Navigator.pop(context);
-            },
-          )).toList(),
+          children: _filters
+              .map(
+                (filter) => RadioListTile<String>(
+              title: Text(filter),
+              value: filter,
+              groupValue: _selectedFilter,
+              onChanged: (value) {
+                setState(() {
+                  _selectedFilter = value!;
+                });
+                Navigator.pop(context);
+              },
+            ),
+          )
+              .toList(),
         ),
       ),
     );
