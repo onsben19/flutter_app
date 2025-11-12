@@ -5,6 +5,7 @@ import '../models/journal_entry.dart';
 class DatabaseService {
   static Database? _database;
   static const String _tableName = 'journal_entries';
+  static const String _usersTable = 'users'; // NEW
 
   // Singleton pattern
   static final DatabaseService _instance = DatabaseService._internal();
@@ -25,12 +26,17 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2, // ⬆️ bumped from 1 to 2
       onCreate: _createDatabase,
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await _createUsersTable(db);
+        }
+      },
     );
   }
 
-  // Créer les tables
+  // Créer les tables (fresh installs)
   Future<void> _createDatabase(Database db, int version) async {
     await db.execute('''
       CREATE TABLE $_tableName (
@@ -48,8 +54,25 @@ class DatabaseService {
       )
     ''');
 
+    // NEW: create users table on fresh DB
+    await _createUsersTable(db);
+
     // Insérer des données d'exemple
     await _insertSampleData(db);
+  }
+
+  // NEW: helper to create the users table
+  Future<void> _createUsersTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_usersTable (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    ''');
   }
 
   // Insérer des données d'exemple
@@ -212,11 +235,11 @@ class DatabaseService {
   // Statistiques
   Future<Map<String, int>> getStatistics() async {
     final db = await database;
-    
+
     final totalEntries = await db.rawQuery('SELECT COUNT(*) as count FROM $_tableName');
     final totalLikes = await db.rawQuery('SELECT SUM(likes) as total FROM $_tableName');
     final totalPhotos = await db.rawQuery(
-      'SELECT COUNT(*) as count FROM $_tableName WHERE photos IS NOT NULL AND photos != ""'
+        'SELECT COUNT(*) as count FROM $_tableName WHERE photos IS NOT NULL AND photos != ""'
     );
 
     return {
@@ -239,21 +262,21 @@ class DatabaseService {
   Future<bool> testDatabaseConfiguration() async {
     try {
       print('🧪 Testing database configuration...');
-      
+
       // Test 1: Connexion à la base
       final db = await database;
       print('✅ Database connection successful');
-      
+
       // Test 2: Vérification de la table
       final tables = await db.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='$_tableName'"
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='$_tableName'"
       );
       if (tables.isEmpty) {
         print('❌ Table $_tableName does not exist');
         return false;
       }
       print('✅ Table $_tableName exists');
-      
+
       // Test 3: Test d'insertion
       final testEntry = JournalEntry(
         title: 'Test Entry',
@@ -265,10 +288,10 @@ class DatabaseService {
         mood: 'neutral',
         photos: [],
       );
-      
+
       final insertedId = await insertEntry(testEntry);
       print('✅ Test insertion successful (ID: $insertedId)');
-      
+
       // Test 4: Test de lecture
       final retrievedEntry = await getEntryById(insertedId);
       if (retrievedEntry == null) {
@@ -276,7 +299,7 @@ class DatabaseService {
         return false;
       }
       print('✅ Test retrieval successful');
-      
+
       // Test 5: Test de suppression
       await deleteEntry(insertedId);
       final deletedEntry = await getEntryById(insertedId);
@@ -285,10 +308,10 @@ class DatabaseService {
         return false;
       }
       print('✅ Test deletion successful');
-      
+
       print('🎉 All database tests passed!');
       return true;
-      
+
     } catch (e) {
       print('❌ Database test failed: $e');
       return false;
@@ -299,18 +322,18 @@ class DatabaseService {
   Future<Map<String, dynamic>> getDatabaseInfo() async {
     try {
       final db = await database;
-      
+
       // Vérifier si la table existe
       final tables = await db.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='$_tableName'"
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='$_tableName'"
       );
-      
+
       final tableExists = tables.isNotEmpty;
-      
+
       // Compter les entrées
       final countResult = await db.rawQuery('SELECT COUNT(*) as count FROM $_tableName');
       final entryCount = countResult.first['count'] as int;
-      
+
       // Informations sur la base
       final info = {
         'database_path': db.path,
@@ -319,10 +342,10 @@ class DatabaseService {
         'database_version': await db.getVersion(),
         'last_check': DateTime.now().toIso8601String(),
       };
-      
+
       print('📊 Database Info: $info');
       return info;
-      
+
     } catch (e) {
       print('❌ Error getting database info: $e');
       return {'error': e.toString()};
