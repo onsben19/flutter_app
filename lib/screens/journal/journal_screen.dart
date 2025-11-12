@@ -269,11 +269,7 @@ Fin du carnet - ${_journalEntries.length} entrées exportées
             onPressed: _loadEntries,
             tooltip: 'Actualiser',
           ),
-          IconButton(
-            icon: const Icon(Icons.download),
-            onPressed: _exportJournal,
-            tooltip: 'Exporter',
-          ),
+          
         ],
       ),
       body: _isLoading
@@ -564,6 +560,16 @@ Fin du carnet - ${_journalEntries.length} entrées exportées
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit, size: 18),
+                              onPressed: () => _editEntry(entry),
+                              padding: const EdgeInsets.all(4),
+                              constraints: const BoxConstraints(
+                                minWidth: 32,
+                                minHeight: 32,
+                              ),
+                              tooltip: 'Modifier',
+                            ),
                             IconButton(
                               icon: const Icon(Icons.share, size: 18),
                               onPressed: () => _shareEntry(entry),
@@ -1192,6 +1198,504 @@ Fin du carnet - ${_journalEntries.length} entrées exportées
     }
   }
 
+  Future<void> _editEntry(JournalEntry entry) async {
+    final titleController = TextEditingController(text: entry.title);
+    final contentController = TextEditingController(text: entry.content);
+    final locationController = TextEditingController(text: entry.location);
+    String selectedMood = entry.mood ?? 'happy';
+    String selectedType = entry.type;
+    List<String> selectedImages = List.from(entry.photos); // Copie des photos existantes
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.9,
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
+            ),
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header avec bouton de fermeture
+                Row(
+                  children: [
+                    Icon(Icons.edit, color: AppTheme.primaryColor),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '✏️ Modifier l\'entrée',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.primaryColor,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.grey),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 20),
+                
+                // Contenu scrollable
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Titre
+                        TextField(
+                          controller: titleController,
+                          decoration: InputDecoration(
+                            labelText: 'Titre *',
+                            hintText: 'Ex: Découverte de Montmartre',
+                            prefixIcon: Icon(Icons.title, color: AppTheme.primaryColor),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          textCapitalization: TextCapitalization.sentences,
+                        ),
+                        
+                        const SizedBox(height: 16),
+                        
+                        // Contenu
+                        TextField(
+                          controller: contentController,
+                          maxLines: 3,
+                          decoration: InputDecoration(
+                            labelText: 'Contenu *',
+                            hintText: 'Décrivez votre expérience...',
+                            prefixIcon: const Padding(
+                              padding: EdgeInsets.only(bottom: 40),
+                              child: Icon(Icons.description, color: AppTheme.primaryColor),
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          textCapitalization: TextCapitalization.sentences,
+                        ),
+                        
+                        const SizedBox(height: 16),
+                        
+                        // Localisation
+                        TextField(
+                          controller: locationController,
+                          decoration: InputDecoration(
+                            labelText: 'Lieu',
+                            hintText: 'Ex: Tour Eiffel, Paris',
+                            prefixIcon: Icon(Icons.location_on, color: AppTheme.primaryColor),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          textCapitalization: TextCapitalization.words,
+                        ),
+                        
+                        const SizedBox(height: 16),
+                        
+                        // Section Photos
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade300),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Header photos
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade50,
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(12),
+                                    topRight: Radius.circular(12),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.photo_library, color: AppTheme.primaryColor),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Photos (${selectedImages.length})',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppTheme.primaryColor,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: Icon(Icons.camera_alt, color: AppTheme.primaryColor),
+                                      onPressed: () => _pickImage(ImageSource.camera, selectedImages, setDialogState),
+                                      tooltip: 'Prendre une photo',
+                                      padding: const EdgeInsets.all(8),
+                                      constraints: const BoxConstraints(
+                                        minWidth: 40,
+                                        minHeight: 40,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: Icon(Icons.photo_library, color: AppTheme.primaryColor),
+                                      onPressed: () => _pickImage(ImageSource.gallery, selectedImages, setDialogState),
+                                      tooltip: 'Choisir depuis la galerie',
+                                      padding: const EdgeInsets.all(8),
+                                      constraints: const BoxConstraints(
+                                        minWidth: 40,
+                                        minHeight: 40,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              
+                              // Aperçu des images
+                              if (selectedImages.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  child: SizedBox(
+                                    height: 100,
+                                    child: ListView.builder(
+                                      scrollDirection: Axis.horizontal,
+                                      itemCount: selectedImages.length,
+                                      itemBuilder: (context, index) {
+                                        return Container(
+                                          margin: const EdgeInsets.only(right: 12),
+                                          child: Stack(
+                                            children: [
+                                              ClipRRect(
+                                                borderRadius: BorderRadius.circular(8),
+                                                child: Image.file(
+                                                  File(selectedImages[index]),
+                                                  width: 100,
+                                                  height: 100,
+                                                  fit: BoxFit.cover,
+                                                ),
+                                              ),
+                                              Positioned(
+                                                top: 4,
+                                                right: 4,
+                                                child: GestureDetector(
+                                                  onTap: () {
+                                                    setDialogState(() {
+                                                      selectedImages.removeAt(index);
+                                                    });
+                                                  },
+                                                  child: Container(
+                                                    padding: const EdgeInsets.all(4),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.red,
+                                                      borderRadius: BorderRadius.circular(12),
+                                                    ),
+                                                    child: const Icon(
+                                                      Icons.close, 
+                                                      color: Colors.white, 
+                                                      size: 16,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                )
+                              else
+                                Container(
+                                  padding: const EdgeInsets.all(20),
+                                  child: Column(
+                                    children: [
+                                      Icon(
+                                        Icons.add_photo_alternate_outlined,
+                                        size: 48,
+                                        color: Colors.grey.shade400,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Aucune photo ajoutée',
+                                        style: TextStyle(
+                                          color: Colors.grey.shade600,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        
+                        const SizedBox(height: 16),
+                        
+                        // Type et Humeur
+                        Row(
+                          children: [
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                value: selectedType,
+                                decoration: InputDecoration(
+                                  labelText: 'Type',
+                                  prefixIcon: Icon(_getEntryTypeIcon(selectedType), color: AppTheme.primaryColor),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 'text',
+                                    child: Text('Journal'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'photo',
+                                    child: Text('Photos'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'food',
+                                    child: Text('Cuisine'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'activity',
+                                    child: Text('Activité'),
+                                  ),
+                                ],
+                                onChanged: (value) {
+                                  setDialogState(() {
+                                    selectedType = value!;
+                                  });
+                                },
+                                isExpanded: true,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                value: selectedMood,
+                                decoration: InputDecoration(
+                                  labelText: 'Humeur',
+                                  prefixIcon: Icon(_getMoodIcon(selectedMood), color: _getMoodColor(selectedMood)),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 'happy',
+                                    child: Text('Heureux'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'excited',
+                                    child: Text('Excité'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'amazed',
+                                    child: Text('Émerveillé'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'sad',
+                                    child: Text('Triste'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'neutral',
+                                    child: Text('Neutre'),
+                                  ),
+                                ],
+                                onChanged: (value) {
+                                  setDialogState(() {
+                                    selectedMood = value!;
+                                  });
+                                },
+                                isExpanded: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        
+                        const SizedBox(height: 20),
+                        
+                        // Informations de création/modification
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Informations',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Créé le: ${_formatDateTime(entry.date)}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              Text(
+                                'Likes: ${entry.likes} • Commentaires: ${entry.comments}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(height: 20),
+                
+                // Boutons d'action
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.grey.shade600,
+                      ),
+                      child: const Text('Annuler'),
+                    ),
+                    
+                    const SizedBox(width: 12),
+                    
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.check, size: 18),
+                      label: const Text('Modifier'),
+                      onPressed: () {
+                        if (_validateForm(titleController.text, contentController.text)) {
+                          _updateEntry(
+                            entry.id!,
+                            titleController.text.trim(),
+                            contentController.text.trim(),
+                            selectedMood,
+                            locationController.text.trim().isNotEmpty 
+                              ? locationController.text.trim() 
+                              : 'Localisation non spécifiée',
+                            selectedType,
+                            selectedImages,
+                          );
+                          Navigator.pop(context);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Veuillez remplir le titre et le contenu'),
+                              backgroundColor: Colors.orange,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        ),
+      );
+  }
+
+  Future<void> _updateEntry(
+    int entryId,
+    String title,
+    String content,
+    String mood,
+    String location,
+    String type,
+    List<String> photos,
+  ) async {
+    try {
+      // Trouver l'entrée originale pour préserver les données importantes
+      final originalEntry = _journalEntries.firstWhere((entry) => entry.id == entryId);
+      
+      final updatedEntry = JournalEntry(
+        id: entryId,
+        title: title,
+        content: content,
+        date: originalEntry.date, // Garder la date de création
+        mood: mood,
+        location: location,
+        type: type,
+        photos: photos,
+        author: originalEntry.author, // Garder l'auteur original
+        likes: originalEntry.likes, // Préserver les likes
+        comments: originalEntry.comments, // Préserver les commentaires
+      );
+
+      await _databaseService.updateEntry(updatedEntry);
+      await _loadEntries();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 8),
+                Text('Entrée "${title}" modifiée !'),
+              ],
+            ),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur lors de la modification: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   void _showComments(JournalEntry entry) {
     showModalBottomSheet(
       context: context,
@@ -1322,15 +1826,8 @@ Fin du carnet - ${_journalEntries.length} entrées exportées
                           onTap: () => _shareToMessages(entry),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildShareOption(
-                          icon: Icons.more_horiz,
-                          label: 'Plus',
-                          color: AppTheme.primaryColor,
-                          onTap: () => _shareToOthers(entry),
-                        ),
-                      ),
+                     
+                      
                     ],
                   ),
                 ],
@@ -1820,6 +2317,31 @@ class JournalSearchDelegate extends SearchDelegate<String> {
         return Icons.directions_run;
       default:
         return Icons.note;
+    }
+  }
+}
+
+// Compatibility shim: provide updateEntry if DatabaseService doesn't define it.
+// This extension uses the existing deleteEntry/insertEntry methods as a fallback
+// to perform a simple update-like behavior. If DatabaseService later exposes a
+// native updateEntry method, the instance method will be used instead of this extension.
+extension DatabaseServiceUpdateExtension on DatabaseService {
+  Future<void> updateEntry(JournalEntry entry) async {
+    try {
+      // Attempt to remove the existing entry if it has an id.
+      if (entry.id != null) {
+        try {
+          await deleteEntry(entry.id!);
+        } catch (_) {
+          // ignore errors from delete fallback and proceed to insert
+        }
+      }
+
+      // Insert the updated entry (fallback behavior).
+      await insertEntry(entry);
+    } catch (e) {
+      // propagate error so callers can handle it
+      rethrow;
     }
   }
 }

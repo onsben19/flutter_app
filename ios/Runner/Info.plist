@@ -62,5 +62,26 @@
 	<string>Cette app a besoin d'accéder à l'appareil photo pour ajouter des photos à votre journal de voyage.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Cette app a besoin d'accéder à votre galerie photo pour ajouter des images à votre journal de voyage.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>quotable.io</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSExceptionMinimumTLSVersion</key>
+				<string>TLSv1.0</string>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
 </dict>
 </plist>
